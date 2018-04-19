@@ -103,7 +103,7 @@ import posixpath
 from pprint import pformat
 from threading import Lock
 
-from werkzeug.urls import url_encode, url_quote, url_join
+from werkzeug.urls import url_encode, url_quote, url_join, fast_url_quote
 from werkzeug.utils import redirect, format_string
 from werkzeug.exceptions import HTTPException, NotFound, MethodNotAllowed, \
      BadHost
@@ -938,7 +938,7 @@ class BaseConverter(object):
         return value
 
     def to_url(self, value):
-        return url_quote(value, charset=self.map.charset)
+        return fast_url_quote(text_type(value).encode(self.map.charset))
 
 
 class UnicodeConverter(BaseConverter):

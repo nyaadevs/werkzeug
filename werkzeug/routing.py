@@ -1783,7 +1783,7 @@ class MapAdapter(object):
             (self.map.host_matching and host == self.server_name) or
             (not self.map.host_matching and domain_part == self.subdomain)
         ):
-            return str(url_join(self.script_name, './' + path.lstrip('/')))
+            return '%s/%s' % (self.script_name.rstrip('/'), path.lstrip('/'))
         return str('%s//%s%s/%s' % (
             self.url_scheme + ':' if self.url_scheme else '',
             host,

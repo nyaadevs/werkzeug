@@ -968,9 +968,8 @@ class Rule(RuleFactory):
                     uops += self.build_string(n + 2)
 
                 nops = bytearray()  # otherwise
-                if n == 0 or not dont_build_string:
-                    nops += self.build_op('LOAD_CONST', self.get_const(''))
                 if not dont_build_string:
+                    nops += self.build_op('LOAD_CONST', self.get_const(''))
                     nops += self.build_op('DUP_TOP')
                 elif needs_build_string:
                     nops += self.build_op('ROT_TWO')

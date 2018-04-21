@@ -803,6 +803,12 @@ class Rule(RuleFactory):
 
     class BuilderCompiler:
         JOIN_EMPTY = ''.join
+        if sys.version_info >= (3, 6):
+            OPARG_SIZE = 256
+            OPARG_VARI = False
+        else:
+            OPARG_SIZE = 65536
+            OPARG_VARI = True
 
         def __init__(self, rule):
             self.rule = rule
@@ -884,16 +890,27 @@ class Rule(RuleFactory):
                 new.append((None, ''))
             return new
 
-        def build_op(self, op, arg):
+        def build_op(self, op, arg=None):
             """
             Return a byte representation of a Python instruction.
             """
             if isinstance(op, str):
                 op = dis.opmap[op]
-            if sys.version_info >= (3, 6):
+            if arg is None and op >= dis.HAVE_ARGUMENT:
+                raise ValueError("Operation requires an argument: %s" % dis.opname[op])
+            if arg is not None and op < dis.HAVE_ARGUMENT:
+                raise ValueError("Operation takes no argument: %s" % dis.opname[op])
+            if arg is None:
+                arg = 0
+            # Python 3.6 changed the argument to an 8-bit integer, so this
+            # could be a practical consideration
+            if arg >= self.OPARG_SIZE:
+                return (self.build_op('EXTENDED_ARG', arg // self.OPARG_SIZE) +
+                        self.build_op(op, arg % self.OPARG_SIZE))
+            if not self.OPARG_VARI:
                 return bytearray((op, arg))
             elif op >= dis.HAVE_ARGUMENT:
-                return bytearray((op, arg, arg // 256))
+                return bytearray((op, arg % 256, arg // 256))
             else:
                 return bytearray((op,))
 
@@ -943,10 +960,10 @@ class Rule(RuleFactory):
                 # assemble this in its own buffers because we need to jump over it
                 uops = bytearray()  # run if kwargs. TOS=kwargs
                 uops += self.build_op('LOAD_CONST', self.get_const(encode_query_vars))
-                uops += self.build_op('ROT_TWO', 0)
+                uops += self.build_op('ROT_TWO')
                 uops += self.build_op('CALL_FUNCTION', 1)
                 uops += self.build_op('LOAD_CONST', self.get_const('?'))
-                uops += self.build_op('ROT_TWO', 0)
+                uops += self.build_op('ROT_TWO')
                 if dont_build_string:
                     uops += self.build_string(n + 2)
 
@@ -954,14 +971,25 @@ class Rule(RuleFactory):
                 if n == 0 or not dont_build_string:
                     nops += self.build_op('LOAD_CONST', self.get_const(''))
                 if not dont_build_string:
-                    nops += self.build_op('DUP_TOP', 0)
+                    nops += self.build_op('DUP_TOP')
                 elif needs_build_string:
-                    nops += self.build_op('ROT_TWO', 0)
-                    nops += self.build_op('POP_TOP', 0)
+                    nops += self.build_op('ROT_TWO')
+                    nops += self.build_op('POP_TOP')
                 nops += self.build_op('JUMP_FORWARD', len(uops))
 
-                lj = len(self.build_op('JUMP_IF_TRUE_OR_POP', 0))
-                ops += self.build_op('JUMP_IF_TRUE_OR_POP', ind + len(ops) + lj + len(nops))
+                # this jump needs to take its own length into account. the
+                # simple way to do that is to compute a minimal guess for the
+                # length of the jump instruction, and keep revising it upward
+                jump_op = self.build_op('JUMP_IF_TRUE_OR_POP', 0)
+                while True:
+                    jump_len = len(jump_op)
+                    jump_target = ind + len(ops) + jump_len + len(nops)
+                    jump_op = self.build_op('JUMP_IF_TRUE_OR_POP', jump_target)
+                    assert len(jump_op) >= jump_len
+                    if len(jump_op) == jump_len:
+                        break
+
+                ops += jump_op
                 ops += nops
                 ops += uops
                 stack += 1
@@ -1034,7 +1062,7 @@ class Rule(RuleFactory):
                 ops += rv
                 peak_stack = max(stack + ps, peak_stack)
                 ops += self.build_op('BUILD_TUPLE', 2)
-            ops += self.build_op('RETURN_VALUE', 0)
+            ops += self.build_op('RETURN_VALUE')
             code_args = [argcount,
                          len(self.var),
                          peak_stack + len(self.var),

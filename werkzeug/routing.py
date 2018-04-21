@@ -969,9 +969,13 @@ class Rule(RuleFactory):
 
                 nops = bytearray()  # otherwise
                 if not dont_build_string:
+                    # if we're going to build a string, we need to pad out to
+                    # a constant length
                     nops += self.build_op('LOAD_CONST', self.get_const(''))
                     nops += self.build_op('DUP_TOP')
                 elif needs_build_string:
+                    # we inserted the ''.join reference at the bottom of the
+                    # stack, but we don't want to call it: throw it away
                     nops += self.build_op('ROT_TWO')
                     nops += self.build_op('POP_TOP')
                 nops += self.build_op('JUMP_FORWARD', len(uops))

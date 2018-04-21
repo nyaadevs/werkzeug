@@ -814,12 +814,23 @@ class Rule(RuleFactory):
             self.defaults = dict(iteritems(self.rule.defaults or {}))
 
         def get_const(self, x):
+            """
+            Return a constant ID for an object, adding it to the pool if not
+            already present.
+            """
             if x not in self.const_table:
                 self.const_table[x] = len(self.consts)
                 self.consts.append(x)
             return self.const_table[x]
 
         def get_var(self, x):
+            """
+            Return a local variable ID for a name, adding it to the pool if
+            not already present.
+            Our only use for local variables is as function arguments: any
+            variable name that exists before the call to add_defaults() will
+            become one.
+            """
             x = str(x)
             if x not in self.var_table:
                 self.var_table[x] = len(self.var)
@@ -827,6 +838,14 @@ class Rule(RuleFactory):
             return self.var_table[x]
 
         def add_defaults(self):
+            """
+            It's allowed for a rule builder to receive any of its defaults as
+            arguments. We don't bother to check that they match anywhere,
+            since suitable_for() should have already done that, but we do
+            need them to be optional arguments.
+            Since their values are known at compile-time, the builder will
+            never refer to these arguments.
+            """
             # ensure every default exists
             for k in self.defaults.keys():
                 self.get_var(k)
@@ -846,6 +865,10 @@ class Rule(RuleFactory):
                 self.var_table[k] = i
 
         def collapse_constants(self, opl):
+            """
+            Given a list of build operations, spit out a new list with runs
+            of constant elements joined.
+            """
             new = []
             for op, elem in opl:
                 if op is not None:
@@ -862,6 +885,9 @@ class Rule(RuleFactory):
             return new
 
         def build_op(self, op, arg):
+            """
+            Return a byte representation of a Python instruction.
+            """
             if isinstance(op, str):
                 op = dis.opmap[op]
             if sys.version_info >= (3, 6):
@@ -872,6 +898,11 @@ class Rule(RuleFactory):
                 return bytearray((op,))
 
         def build_string(self, n):
+            """
+            Return the correct opcode(s) for building a string from n elements.
+            If the ''.join crutch is needed, it must already be immediately
+            below the string elements on the stack.
+            """
             if 'BUILD_STRING' in dis.opmap:
                 return self.build_op('BUILD_STRING', n)
             else:
